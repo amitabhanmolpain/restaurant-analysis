@@ -1,135 +1,242 @@
-# app.py (Streamlit Frontend)
-
-import streamlit as st
-import requests
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
+import os
+from visualize import generate_graphs
+import logging
 from datetime import datetime
 
-BASE_URL = "http://localhost:5000"
+# Configure logging with more detailed format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-st.title("Restaurant Analytics Dashboard")
+app = Flask(__name__)
 
-menu = st.sidebar.selectbox("Choose Option", ["Add Item to Menu", "Place Order", "Visualize", "Delete Item"])	
+# Configure CORS with explicit support for preflight requests
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+CORS(app, resources={r"/*": {
+    "origins": allowed_origins,
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Origin"]
+}})
+logger.info(f"CORS configured for origins: {allowed_origins}")
 
-if menu == "Add Item to Menu":
-    st.header("Add New Food Item")
+# Add security headers and ensure CORS on all responses
+@app.after_request
+def add_security_headers(response):
+    logger.info(f"Adding headers to response for request: {request.method} {request.path}")
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins or '*' in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin if origin else '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Origin'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
+
+# Handle preflight OPTIONS requests explicitly
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        logger.info(f"Handling preflight OPTIONS request from origin: {request.headers.get('Origin')}")
+        response = jsonify({"message": "Preflight request successful"})
+        response.status_code = 200
+        return response
+
+# MongoDB Connection
+try:
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    client.admin.command("ping")
+    logger.info("Connected to MongoDB successfully")
+except ConnectionFailure as e:
+    logger.error(f"Failed to connect to MongoDB: {e}", exc_info=True)
+    raise SystemExit("MongoDB connection failed")
+
+db = client["restaurant"]
+menu_collection = db["restaurant_menu"]
+order_collection = db["food_order"]
+
+# Ensure graph directory exists
+GRAPH_DIR = os.path.join(os.getcwd(), "graphs")
+os.makedirs(GRAPH_DIR, exist_ok=True)
+logger.info(f"Graph directory ensured at: {GRAPH_DIR}")
+
+# Helper function to validate menu item data
+def validate_menu_item(data):
+    required_fields = ["name", "category", "cuisine", "price"]
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        logger.warning(f"Validation failed for menu item: missing fields {missing_fields}")
+        return False, f"Missing required fields: {missing_fields}"
     
-    name = st.text_input("Food Name")
-    price = st.number_input("Price", min_value=0.0, step=0.1)
-    category = st.selectbox("Category", ["Breakfast", "Lunch", "Dinner"])
-    cuisine = st.selectbox("Cuisine", [
-        "North Indian", "South Indian", "Chinese", "Chaat", "Sweets", "Beverages", "Other"
-    ])
-
-    if st.button("Add Item"):
-        if name.strip() == "":
-            st.error("Please enter a food name.")
-        else:
-            data = {
-                "name": name,
-                "price": price,
-                "category": category,
-                "cuisine": cuisine
-            }
-            try:
-                response = requests.post(f"{BASE_URL}/add_item", json=data)
-                if response.status_code == 200:
-                    st.success(response.json().get("message", "Item added!"))
-                else:
-                    st.error("Failed to add item.")
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-
-
-elif menu == "Place Order":
-    st.header("Place an Order")
-    # Use /get_items to fetch menu items (make sure this route exists in your backend)
+    # Validate field types
+    if not all(isinstance(data[field], str) for field in ["name", "category", "cuisine"]):
+        logger.warning("Validation failed for menu item: name, category, and cuisine must be strings")
+        return False, "Name, category, and cuisine must be strings"
+    
+    # Validate price
     try:
-        items_response = requests.get(f"{BASE_URL}/get_items")
-        if items_response.status_code == 200:
-            items = items_response.json().get("items", [])
-            if not items:
-                st.warning("No menu items available. Please add items first.")
-            else:
-                item_names = [item["name"] for item in items]
-                selected_items = st.multiselect("Select Items", item_names)
-                if st.button("Place Order") and selected_items:
-                    order = {
-                        "items": selected_items,
-                        "datetime": datetime.now().isoformat()
-                    }
-                    order_response = requests.post(f"{BASE_URL}/place_order", json=order)
-                    if order_response.status_code == 200:
-                        st.success(order_response.json().get("message", "Order placed!"))
-                    else:
-                        st.error("Failed to place order.")
-        else:
-            st.error("Failed to fetch menu items.")
-    except Exception as e:
-        st.error(f"Error: {e}")
+        price = float(data["price"])
+        if price < 0:
+            logger.warning("Validation failed for menu item: price must be non-negative")
+            return False, "Price must be a non-negative number"
+    except (ValueError, TypeError):
+        logger.warning("Validation failed for menu item: price must be a valid number")
+        return False, "Price must be a valid number"
+    
+    return True, ""
 
-elif menu == "Visualize":
-    st.header("Sales Visualizations")
+# Helper function to validate order data
+def validate_order(data):
+    if not isinstance(data.get("items"), list) or not data.get("items"):
+        logger.warning("Validation failed for order: items must be a non-empty list")
+        return False, "Items must be a non-empty list"
+    if not isinstance(data.get("datetime"), str):
+        logger.warning("Validation failed for order: datetime must be a string")
+        return False, "Datetime must be a string"
     try:
-        response = requests.get(f"{BASE_URL}/visualize")
-        if response.status_code == 200:
-            images = response.json().get("images", [])
-            if not images:
-                st.warning("No visualizations available.")
-            for img_url in images:
-               st.image(img_url, use_container_width=True)
-        else:
-            st.error(f"Failed to fetch visualizations (Status: {response.status_code}).")
-    except Exception as e:
-        st.error(f"Error fetching visualizations: {e}")
-#deleting items from menu        
-elif menu == "Delete Item":
-    st.header("Delete Menu Items")
+        datetime.fromisoformat(data["datetime"])
+    except ValueError as e:
+        logger.warning(f"Validation failed for order: invalid datetime format - {e}")
+        return False, f"Invalid datetime format: {str(e)}"
+    if not all(isinstance(item, str) for item in data["items"]):
+        logger.warning("Validation failed for order: all items must be strings")
+        return False, "All items must be strings"
+    return True, ""
 
+# Add Item
+@app.route("/add_item", methods=["POST"])
+def add_item():
     try:
-        response = requests.get(f"{BASE_URL}/get_items")
-        if response.status_code == 200:
-            items = response.json().get("items", [])
-            if not items:
-                st.warning("No items in the menu.")
-            else:
-                # Group items by category and cuisine
-                grouped = {}
-                for item in items:
-                    category = item.get("category", "Unspecified")
-                    cuisine = item.get("cuisine", "Unspecified")
-                    grouped.setdefault(category, {}).setdefault(cuisine, []).append(item["name"])
-
-                selected_to_delete = []
-
-                for category, cuisines in grouped.items():
-                    st.subheader(f"Category: {category}")  # Replace expander with subheader
-                    for cuisine, names in cuisines.items():
-                        st.write(f"**Cuisine: {cuisine}**")  # Replace expander with a simple label
-                        selected = st.multiselect(
-                            f"Select items to delete from {cuisine} ({category})",
-                            names,
-                            key=f"{category}-{cuisine}"
-                        )
-                        selected_to_delete.extend(selected)
-
-                if selected_to_delete:
-                    if st.button("Delete Selected Items"):
-                        try:
-                            del_response = requests.post(
-                                f"{BASE_URL}/delete_items",
-                                json={"items": selected_to_delete}
-                            )
-                            if del_response.status_code == 200:
-                                st.success("Selected items deleted.")
-                            else:
-                                st.error("Failed to delete items.")
-                        except Exception as e:
-                            st.error(f"Error deleting items: {e}")
-                else:
-                    st.info("Select at least one item to delete.")
-        else:
-            st.error("Failed to fetch menu items.")
+        data = request.get_json()
+        if not data:
+            logger.warning("No data provided in add_item request")
+            return jsonify({"message": "No data provided"}), 400
+        
+        # Validate the menu item data
+        is_valid, error_message = validate_menu_item(data)
+        if not is_valid:
+            logger.warning(f"Invalid menu item data: {error_message}")
+            return jsonify({"message": error_message}), 400
+        
+        # Check if item already exists
+        if menu_collection.find_one({"name": data["name"]}):
+            logger.info(f"Item already exists: {data['name']}")
+            return jsonify({"message": "Item already exists"}), 409
+        
+        # Convert price to float
+        item = {
+            "name": data["name"],
+            "category": data["category"],
+            "cuisine": data["cuisine"],
+            "price": float(data["price"])
+        }
+        
+        menu_collection.insert_one(item)
+        logger.info(f"Added menu item: {item['name']} with price: {item['price']}")
+        return jsonify({"message": "Item added successfully"}), 200
     except Exception as e:
-        st.error(f"Error fetching menu: {e}")
-1 
+        logger.error(f"Error adding item: {e}", exc_info=True)
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Get Menu Items
+@app.route("/get_items", methods=["GET"])
+def get_items():
+    try:
+        logger.info("Received request for /get_items")
+        items = list(menu_collection.find({}, {"_id": 0}))
+        logger.info(f"Fetched {len(items)} menu items")
+        return jsonify({"items": items}), 200
+    except Exception as e:
+        logger.error(f"Error fetching items: {e}", exc_info=True)
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Place Order
+@app.route("/place_order", methods=["POST"])
+def place_order():
+    try:
+        data = request.get_json()
+        if not data:
+            logger.warning("No order data provided in place_order request")
+            return jsonify({"message": "No order data provided"}), 400
+        
+        # Validate the order data
+        is_valid, error_message = validate_order(data)
+        if not is_valid:
+            logger.warning(f"Invalid order data: {error_message}")
+            return jsonify({"message": error_message}), 400
+        
+        # Check for invalid items
+        invalid_items = [item for item in data["items"] if not menu_collection.find_one({"name": item})]
+        if invalid_items:
+            logger.info(f"Invalid items in order: {invalid_items}")
+            return jsonify({"message": f"Invalid items: {invalid_items}"}), 400
+        
+        order_collection.insert_one(data)
+        logger.info(f"Placed order with {len(data['items'])} items")
+        return jsonify({"message": "Order placed successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error placing order: {e}", exc_info=True)
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Visualization route
+@app.route("/visualize", methods=["GET"])
+def visualize():
+    try:
+        image_urls = generate_graphs(order_collection, menu_collection)
+        if not image_urls:
+            logger.info("No visualizations generated due to empty data")
+            return jsonify({"message": "No visualizations generated (empty data)"}), 200
+        base_url = os.getenv("GRAPH_BASE_URL", "http://127.0.0.1:5001/graphs/")  # Updated port to 5001
+        absolute_urls = [url if url.startswith('http') else f"{base_url}{url.split('/')[-1]}" for url in image_urls]
+        logger.info(f"Generated {len(absolute_urls)} visualizations: {absolute_urls}")
+        return jsonify({"images": absolute_urls}), 200
+    except Exception as e:
+        logger.error(f"Visualization error: {e}", exc_info=True)
+        return jsonify({"message": f"Visualization error: {str(e)}"}), 500
+
+# Serve image files
+@app.route("/graphs/<path:filename>")
+def serve_graph(filename):
+    try:
+        logger.info(f"Serving graph file: {filename}")
+        return send_from_directory(GRAPH_DIR, filename)
+    except FileNotFoundError:
+        logger.warning(f"Graph file not found: {filename}")
+        return jsonify({"message": "Graph not found"}), 404
+    except Exception as e:
+        logger.error(f"Error serving graph: {e}", exc_info=True)
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Delete items
+@app.route("/delete_items", methods=["POST"])
+def delete_items():
+    try:
+        data = request.get_json()
+        items_to_delete = data.get("items", [])
+        if not items_to_delete or not isinstance(items_to_delete, list):
+            logger.warning("No valid items provided to delete")
+            return jsonify({"message": "No valid items provided to delete"}), 400
+        result = menu_collection.delete_many({"name": {"$in": items_to_delete}})
+        logger.info(f"Deleted {result.deleted_count} menu items")
+        return jsonify({"message": f"{result.deleted_count} items deleted"}), 200
+    except Exception as e:
+        logger.error(f"Error deleting items: {e}", exc_info=True)
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Run Flask App
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5001))  # Changed to 5001
+    debug = os.getenv("FLASK_DEBUG", "True") == "True"
+    logger.info(f"Starting Flask app on port {port} with debug={debug}")
+    try:
+        app.run(debug=debug, host="127.0.0.1", port=port)
+    except Exception as e:
+        logger.error(f"Failed to start Flask server: {e}", exc_info=True)
+        raise
