@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import About from './components/About';
 import Dashboard from './components/Dashboard';
-import MenuManager from './components/MenuManager'; // ✅ Import your new component
+import MenuManager from './components/MenuManager';
 
 const App = () => {
   return (
@@ -11,7 +11,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={<About />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/menu" element={<MenuManager />} /> {/* ✅ New route */}
+          <Route path="/menu" element={<MenuManager />} />
         </Routes>
       </Router>
     </div>
