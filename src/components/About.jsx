@@ -1,37 +1,46 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Headerr from "../assets/Headerr.png";
 import H4 from "../assets/H4.png";
 
 const About = () => {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
+  // Hardcoded credentials (email: password)
+  const credentials = {
+    'admin@example.com': 'admin123',
+    'manager@example.com': 'manager456',
+    'owner@example.com': 'owner789'
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setMessage('Email and password are required');
+    if (!email) {
+      setMessage('Email is required');
+      return;
+    }
+    if (!password) {
+      setMessage('Password is required');
       return;
     }
 
-    // Simulate API call to backend (future implementation)
-    setMessage('');
-    setShowModal(false);
-    setShowSuccessPopup(true);
+    if (credentials[email.toLowerCase()] && credentials[email.toLowerCase()] === password) {
+      localStorage.setItem('isAuthorized', 'true');
+      setMessage('');
+      setShowModal(false);
+      setShowSuccessPopup(true);
 
-    setTimeout(() => {
-      setShowSuccessPopup(false);
-      navigate('/dashboard');
-    }, 2000);
-  };
-
-  const handleAnalyzeClick = () => {
-    navigate('/menu');
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+        navigate('/dashboard');
+      }, 2000);
+    } else {
+      setMessage('Invalid email or password');
+    }
   };
 
   return (
@@ -60,7 +69,7 @@ const About = () => {
             onClick={() => setShowModal(true)}
             className="bg-[#fbbf24] hover:bg-yellow-400 text-black font-semibold py-2 px-6 rounded transition animate-float"
           >
-            Sign In/Sign Up
+            Access Dashboard
           </button>
         </div>
 
@@ -77,31 +86,10 @@ const About = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleAnalyzeClick}
-          className="fixed bottom-6 right-6 bg-[#fbbf24] hover:bg-yellow-400 text-black p-4 rounded-full shadow-lg transition-all duration-300 z-50"
-          title="Analyze Now"
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-        </button>
-
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white text-black p-6 rounded-lg w-full max-w-md">
-              <h2 className="text-2xl font-bold mb-4">{isSignUp ? 'Sign Up' : 'Sign In'}</h2>
+              <h2 className="text-2xl font-bold mb-4">Authorize Access</h2>
               <form onSubmit={handleSubmit}>
                 <div className="mb-4">
                   <label className="block text-sm font-medium mb-1">Email</label>
@@ -128,21 +116,9 @@ const About = () => {
                   type="submit"
                   className="w-full bg-[#fbbf24] hover:bg-yellow-400 text-black py-2 rounded"
                 >
-                  {isSignUp ? 'Sign Up' : 'Sign In'}
+                  Authorize
                 </button>
               </form>
-              <p className="mt-4 text-center">
-                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setMessage('');
-                  }}
-                  className="text-[#fbbf24] hover:underline"
-                >
-                  {isSignUp ? 'Sign In' : 'Sign Up'}
-                </button>
-              </p>
               <button
                 onClick={() => setShowModal(false)}
                 className="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-black py-2 rounded"
@@ -154,10 +130,10 @@ const About = () => {
         )}
 
         {showSuccessPopup && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black cas black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white text-black p-6 rounded-lg">
               <h2 className="text-2xl font-bold mb-4">Success!</h2>
-              <p>{isSignUp ? 'Account created successfully!' : 'You have successfully signed in.'} Redirecting to dashboard...</p>
+              <p>Access authorized. Redirecting to dashboard...</p>
             </div>
           </div>
         )}
