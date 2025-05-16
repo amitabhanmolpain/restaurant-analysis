@@ -3,11 +3,10 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 import os
-from visualize import generate_graphs
-import logging
 from datetime import datetime
+import logging
 
-# Configure logging with more detailed format
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Configure CORS with explicit support for preflight requests
+# Configure CORS
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 CORS(app, resources={r"/*": {
     "origins": allowed_origins,
@@ -25,7 +24,7 @@ CORS(app, resources={r"/*": {
 }})
 logger.info(f"CORS configured for origins: {allowed_origins}")
 
-# Add security headers and ensure CORS on all responses
+# Add security headers and ensure CORS
 @app.after_request
 def add_security_headers(response):
     logger.info(f"Adding headers to response for request: {request.method} {request.path}")
@@ -39,7 +38,7 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     return response
 
-# Handle preflight OPTIONS requests explicitly
+# Handle preflight OPTIONS requests
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
@@ -69,8 +68,8 @@ logger.info(f"Graph directory ensured at: {GRAPH_DIR}")
 
 # Helper function to validate menu item data
 def validate_menu_item(data):
-    required_fields = ["name", "category", "cuisine", "price"]
-    missing_fields = [field for field in required_fields if field not in data]
+    required_fields = ["name", "category", "cuisine", "selling_price", "actual_price"]
+    missing_fields = [field for field in required_fields if field not in data or data[field] is None]
     if missing_fields:
         logger.warning(f"Validation failed for menu item: missing fields {missing_fields}")
         return False, f"Missing required fields: {missing_fields}"
@@ -80,15 +79,16 @@ def validate_menu_item(data):
         logger.warning("Validation failed for menu item: name, category, and cuisine must be strings")
         return False, "Name, category, and cuisine must be strings"
     
-    # Validate price
+    # Validate prices
     try:
-        price = float(data["price"])
-        if price < 0:
-            logger.warning("Validation failed for menu item: price must be non-negative")
-            return False, "Price must be a non-negative number"
-    except (ValueError, TypeError):
-        logger.warning("Validation failed for menu item: price must be a valid number")
-        return False, "Price must be a valid number"
+        selling_price = float(data["selling_price"])
+        actual_price = float(data["actual_price"])
+        if selling_price < 0 or actual_price < 0:
+            logger.warning("Validation failed for menu item: prices must be non-negative")
+            return False, "Selling price and actual price must be non-negative numbers"
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Validation failed for menu item: invalid price format - {str(e)}")
+        return False, "Selling price and actual price must be valid numbers"
     
     return True, ""
 
@@ -117,33 +117,34 @@ def add_item():
         data = request.get_json()
         if not data:
             logger.warning("No data provided in add_item request")
-            return jsonify({"message": "No data provided"}), 400
+            return jsonify({"error": "No data provided"}), 400
         
         # Validate the menu item data
         is_valid, error_message = validate_menu_item(data)
         if not is_valid:
             logger.warning(f"Invalid menu item data: {error_message}")
-            return jsonify({"message": error_message}), 400
+            return jsonify({"error": error_message}), 400
         
         # Check if item already exists
         if menu_collection.find_one({"name": data["name"]}):
             logger.info(f"Item already exists: {data['name']}")
-            return jsonify({"message": "Item already exists"}), 409
+            return jsonify({"error": "Item already exists"}), 409
         
-        # Convert price to float
+        # Create item
         item = {
-            "name": data["name"],
+            "name": data["name"].strip(),
             "category": data["category"],
-            "cuisine": data["cuisine"],
-            "price": float(data["price"])
+            "cuisine": data["cuisine"].strip(),
+            "selling_price": float(data["selling_price"]),
+            "actual_price": float(data["actual_price"])
         }
         
         menu_collection.insert_one(item)
-        logger.info(f"Added menu item: {item['name']} with price: {item['price']}")
+        logger.info(f"Added menu item: {item['name']} with selling_price: {item['selling_price']}, actual_price: {item['actual_price']}")
         return jsonify({"message": "Item added successfully"}), 200
     except Exception as e:
         logger.error(f"Error adding item: {e}", exc_info=True)
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Get Menu Items
 @app.route("/get_items", methods=["GET"])
@@ -155,7 +156,7 @@ def get_items():
         return jsonify({"items": items}), 200
     except Exception as e:
         logger.error(f"Error fetching items: {e}", exc_info=True)
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Place Order
 @app.route("/place_order", methods=["POST"])
@@ -164,42 +165,62 @@ def place_order():
         data = request.get_json()
         if not data:
             logger.warning("No order data provided in place_order request")
-            return jsonify({"message": "No order data provided"}), 400
+            return jsonify({"error": "No order data provided"}), 400
         
         # Validate the order data
         is_valid, error_message = validate_order(data)
         if not is_valid:
             logger.warning(f"Invalid order data: {error_message}")
-            return jsonify({"message": error_message}), 400
+            return jsonify({"error": error_message}), 400
         
         # Check for invalid items
         invalid_items = [item for item in data["items"] if not menu_collection.find_one({"name": item})]
         if invalid_items:
             logger.info(f"Invalid items in order: {invalid_items}")
-            return jsonify({"message": f"Invalid items: {invalid_items}"}), 400
+            return jsonify({"error": f"Invalid items: {invalid_items}"}), 400
         
-        order_collection.insert_one(data)
-        logger.info(f"Placed order with {len(data['items'])} items")
+        # Calculate total cost and loss
+        total_cost = 0
+        total_loss = 0
+        for item_name in data["items"]:
+            item = menu_collection.find_one({"name": item_name})
+            total_cost += item["selling_price"]
+            if item["actual_price"] > item["selling_price"]:
+                total_loss += item["actual_price"] - item["selling_price"]
+        
+        order = {
+            "items": data["items"],
+            "datetime": data["datetime"],
+            "total_cost": total_cost,
+            "total_loss": total_loss
+        }
+        order_collection.insert_one(order)
+        logger.info(f"Placed order with {len(data['items'])} items, total_cost: {total_cost}, total_loss: {total_loss}")
         return jsonify({"message": "Order placed successfully"}), 200
     except Exception as e:
         logger.error(f"Error placing order: {e}", exc_info=True)
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Visualization route
 @app.route("/visualize", methods=["GET"])
 def visualize():
     try:
+        try:
+            from visualize import generate_graphs
+        except ImportError as e:
+            logger.error(f"Failed to import visualize module: {e}")
+            return jsonify({"error": "Visualization module not available"}), 500
         image_urls = generate_graphs(order_collection, menu_collection)
         if not image_urls:
             logger.info("No visualizations generated due to empty data")
             return jsonify({"message": "No visualizations generated (empty data)"}), 200
-        base_url = os.getenv("GRAPH_BASE_URL", "http://127.0.0.1:5001/graphs/")  # Updated port to 5001
+        base_url = os.getenv("GRAPH_BASE_URL", "http://127.0.0.1:5001/graphs/")
         absolute_urls = [url if url.startswith('http') else f"{base_url}{url.split('/')[-1]}" for url in image_urls]
         logger.info(f"Generated {len(absolute_urls)} visualizations: {absolute_urls}")
         return jsonify({"images": absolute_urls}), 200
     except Exception as e:
         logger.error(f"Visualization error: {e}", exc_info=True)
-        return jsonify({"message": f"Visualization error: {str(e)}"}), 500
+        return jsonify({"error": f"Visualization error: {str(e)}"}), 500
 
 # Serve image files
 @app.route("/graphs/<path:filename>")
@@ -209,10 +230,10 @@ def serve_graph(filename):
         return send_from_directory(GRAPH_DIR, filename)
     except FileNotFoundError:
         logger.warning(f"Graph file not found: {filename}")
-        return jsonify({"message": "Graph not found"}), 404
+        return jsonify({"error": "Graph not found"}), 404
     except Exception as e:
         logger.error(f"Error serving graph: {e}", exc_info=True)
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Delete items
 @app.route("/delete_items", methods=["POST"])
@@ -222,17 +243,17 @@ def delete_items():
         items_to_delete = data.get("items", [])
         if not items_to_delete or not isinstance(items_to_delete, list):
             logger.warning("No valid items provided to delete")
-            return jsonify({"message": "No valid items provided to delete"}), 400
+            return jsonify({"error": "No valid items provided to delete"}), 400
         result = menu_collection.delete_many({"name": {"$in": items_to_delete}})
         logger.info(f"Deleted {result.deleted_count} menu items")
         return jsonify({"message": f"{result.deleted_count} items deleted"}), 200
     except Exception as e:
         logger.error(f"Error deleting items: {e}", exc_info=True)
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Run Flask App
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5001))  # Changed to 5001
+    port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "True") == "True"
     logger.info(f"Starting Flask app on port {port} with debug={debug}")
     try:
