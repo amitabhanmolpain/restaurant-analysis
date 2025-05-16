@@ -1,23 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState(null);
   const [items, setItems] = useState([]);
   const [orders, setOrders] = useState([]);
   const [itemName, setItemName] = useState('');
   const [category, setCategory] = useState('');
   const [cuisine, setCuisine] = useState('');
-  const [price, setPrice] = useState('');
+  const [actualPrice, setActualPrice] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
   const [selectedItem, setSelectedItem] = useState('');
   const [quantity, setQuantity] = useState('');
   const [imageURLs, setImageURLs] = useState([]);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Check authorization
+  useEffect(() => {
+    if (!localStorage.getItem('isAuthorized')) {
+      navigate('/');
+    }
+  }, [navigate]);
 
   // Fetch items from backend
   const fetchItems = () => {
     axios.get("http://127.0.0.1:5001/get_items")
       .then((res) => setItems(res.data.items))
-      .catch((err) => console.error("Error fetching items:", err));
+      .catch((err) => {
+        console.error("Error fetching items:", err);
+        setErrorMessage(err.response?.data?.error || 'Failed to fetch items. Please try again.');
+      });
   };
 
   useEffect(() => {
@@ -27,34 +41,70 @@ const Dashboard = () => {
   // Add a new item
   const handleAddItem = (e) => {
     e.preventDefault();
-    if (!itemName || !category || !cuisine || !price) {
-      alert('Please enter item name, category, cuisine, and price.');
+    setErrorMessage('');
+
+    // Validate inputs
+    if (!itemName.trim()) {
+      setErrorMessage('Item name is required.');
+      return;
+    }
+    if (!category) {
+      setErrorMessage('Please select a category.');
+      return;
+    }
+    if (!cuisine.trim()) {
+      setErrorMessage('Cuisine is required.');
+      return;
+    }
+    if (!actualPrice || parseFloat(actualPrice) <= 0) {
+      setErrorMessage('Please enter a valid actual price greater than 0.');
+      return;
+    }
+    if (!sellingPrice || parseFloat(sellingPrice) <= 0) {
+      setErrorMessage('Please enter a valid selling price greater than 0.');
       return;
     }
 
-    axios.post("http://127.0.0.1:5001/add_item", { name: itemName, category, cuisine, price: parseFloat(price) })
+    // Send request
+    axios.post("http://127.0.0.1:5001/add_item", { 
+      name: itemName.trim(), 
+      category, 
+      cuisine: cuisine.trim(), 
+      selling_price: parseFloat(sellingPrice),
+      actual_price: parseFloat(actualPrice)
+    })
       .then(() => {
         setItemName('');
         setCategory('');
         setCuisine('');
-        setPrice('');
+        setActualPrice('');
+        setSellingPrice('');
         fetchItems();
       })
-      .catch((err) => console.error("Error adding item:", err));
+      .catch((err) => {
+        console.error("Error adding item:", err);
+        const serverMessage = err.response?.data?.error || 'Failed to add item. Please try again.';
+        setErrorMessage(serverMessage);
+      });
   };
 
   // Delete an item
   const handleDeleteItem = (itemName) => {
     axios.post("http://127.0.0.1:5001/delete_items", { items: [itemName] })
       .then(() => fetchItems())
-      .catch((err) => console.error("Error deleting item:", err));
+      .catch((err) => {
+        console.error("Error deleting item:", err);
+        setErrorMessage(err.response?.data?.error || 'Failed to delete item. Please try again.');
+      });
   };
 
   // Place an order
   const handlePlaceOrder = (e) => {
     e.preventDefault();
-    if (!selectedItem || !quantity) {
-      alert('Please select an item and enter a quantity.');
+    setErrorMessage('');
+
+    if (!selectedItem || !quantity || parseInt(quantity) <= 0) {
+      setErrorMessage('Please select an item and enter a valid quantity greater than 0.');
       return;
     }
 
@@ -65,18 +115,41 @@ const Dashboard = () => {
 
     axios.post("http://127.0.0.1:5001/place_order", order)
       .then(() => {
-        setOrders((prev) => [...prev, { item: selectedItem, quantity: parseInt(quantity) }]);
+        const selectedItemData = items.find(item => item.name === selectedItem);
+        const actualPrice = parseFloat(selectedItemData.actual_price);
+        const sellingPrice = parseFloat(selectedItemData.selling_price);
+        const qty = parseInt(quantity);
+        const totalPrice = sellingPrice * qty;
+        const profitOrLoss = (sellingPrice - actualPrice) * qty; // Positive for profit, negative/zero for loss
+
+        setOrders((prev) => [...prev, { 
+          item: selectedItem, 
+          quantity: qty,
+          totalPrice: totalPrice,
+          profitOrLoss: profitOrLoss
+        }]);
         setSelectedItem('');
         setQuantity('');
       })
-      .catch((err) => console.error("Error placing order:", err));
+      .catch((err) => {
+        console.error("Error placing order:", err);
+        setErrorMessage(err.response?.data?.error || 'Failed to place order. Please try again.');
+      });
+  };
+
+  // Remove an order from the list
+  const handleRemoveOrder = (index) => {
+    setOrders((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Fetch visualizations
   const handleVisualize = () => {
     axios.get("http://127.0.0.1:5001/visualize")
       .then((res) => setImageURLs(res.data.images))
-      .catch((err) => console.error("Error fetching graphs:", err));
+      .catch((err) => {
+        console.error("Error fetching graphs:", err);
+        setErrorMessage(err.response?.data?.error || 'Failed to fetch visualizations. Please try again.');
+      });
   };
 
   const customerFeedbacks = [
@@ -94,6 +167,7 @@ const Dashboard = () => {
 
   const handleSidebarClick = (section) => {
     setActiveSection(section);
+    setErrorMessage('');
   };
 
   const renderContent = () => {
@@ -115,7 +189,10 @@ const Dashboard = () => {
         return (
           <div className="p-6">
             <h2 className="text-3xl font-bold text-[#fbbf24] mb-4">Add an Item</h2>
-            <form onSubmit={handleAddItem} className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+            {errorMessage && (
+              <p className="text-red-500 mb-4">{errorMessage}</p>
+            )}
+            <form onSubmit={handleAddItem} className="mb-6 grid grid-cols-1 md:grid-cols-5 gap-3">
               <input
                 type="text"
                 placeholder="Item Name"
@@ -123,13 +200,16 @@ const Dashboard = () => {
                 onChange={(e) => setItemName(e.target.value)}
                 className="p-2 border rounded text-black"
               />
-              <input
-                type="text"
-                placeholder="Category (e.g., Dinner)"
+              <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="p-2 border rounded text-black"
-              />
+              >
+                <option value="">Select Category</option>
+                <option value="Breakfast">Breakfast</option>
+                <option value="Lunch">Lunch</option>
+                <option value="Dinner">Dinner</option>
+              </select>
               <input
                 type="text"
                 placeholder="Cuisine (e.g., Italian)"
@@ -139,14 +219,23 @@ const Dashboard = () => {
               />
               <input
                 type="number"
-                placeholder="Price (e.g., 10.99)"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                placeholder="Actual Price (e.g., 8.99)"
+                value={actualPrice}
+                onChange={(e) => setActualPrice(e.target.value)}
                 className="p-2 border rounded text-black"
                 min="0"
                 step="0.01"
               />
-              <button type="submit" className="bg-[#fbbf24] hover:bg-yellow-400 text-black py-2 px-4 rounded md:col-span-4">
+              <input
+                type="number"
+                placeholder="Selling Price (e.g., 10.99)"
+                value={sellingPrice}
+                onChange={(e) => setSellingPrice(e.target.value)}
+                className="p-2 border rounded text-black"
+                min="0"
+                step="0.01"
+              />
+              <button type="submit" className="bg-[#fbbf24] hover:bg-yellow-400 text-black py-2 px-4 rounded md:col-span-5">
                 Add Item
               </button>
             </form>
@@ -155,21 +244,28 @@ const Dashboard = () => {
               <div>
                 <h3 className="text-xl font-semibold text-gray-300 mb-2">Added Items:</h3>
                 <ul className="space-y-2">
-                  {items.map((item, index) => (
-                    <li key={index} className="p-3 bg-gray-800 rounded flex justify-between items-center">
-                      <span>{item.name} - {item.category} ({item.cuisine})</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-gray-300">₹{parseFloat(item.price).toFixed(2)}</span>
-                        <button
-                          onClick={() => handleDeleteItem(item.name)}
-                          className="text-red-500 hover:text-red-700 text-xl"
-                          title="Delete Item"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  {items.map((item, index) => {
+                    const profitOrLoss = parseFloat(item.selling_price) - parseFloat(item.actual_price);
+                    const isProfit = profitOrLoss > 0;
+                    return (
+                      <li key={index} className="p-3 bg-gray-800 rounded flex justify-between items-center">
+                        <span>{item.name} - {item.category} ({item.cuisine})</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-300">Price: ₹{parseFloat(item.selling_price).toFixed(2)}</span>
+                          <span className={isProfit ? "text-green-500" : "text-red-500"}>
+                            {isProfit ? "Profit" : "Loss"}: ₹{Math.abs(profitOrLoss).toFixed(2)}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteItem(item.name)}
+                            className="text-red-500 hover:text-red-700 text-xl"
+                            title="Delete Item"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -180,11 +276,14 @@ const Dashboard = () => {
 
       case 'place-order':
         const selectedItemData = items.find(item => item.name === selectedItem);
-        const totalCost = selectedItemData && quantity ? (parseFloat(selectedItemData.price) * parseInt(quantity)).toFixed(2) : '0.00';
+        const totalCost = selectedItemData && quantity ? (parseFloat(selectedItemData.selling_price) * parseInt(quantity)).toFixed(2) : '0.00';
 
         return (
           <div className="p-6">
             <h2 className="text-3xl font-bold text-[#fbbf24] mb-4">Place Order</h2>
+            {errorMessage && (
+              <p className="text-red-500 mb-4">{errorMessage}</p>
+            )}
             <form onSubmit={handlePlaceOrder} className="mb-6">
               <select
                 value={selectedItem}
@@ -194,7 +293,7 @@ const Dashboard = () => {
                 <option value="">Select Item</option>
                 {items.map((item, index) => (
                   <option key={index} value={item.name}>
-                    {item.name} ({item.category}, {item.cuisine}) - ₹{parseFloat(item.price).toFixed(2)}
+                    {item.name} ({item.category}, {item.cuisine}) - ₹{parseFloat(item.selling_price).toFixed(2)}
                   </option>
                 ))}
               </select>
@@ -216,11 +315,27 @@ const Dashboard = () => {
               <div>
                 <h3 className="text-xl font-semibold text-gray-300 mb-2">Placed Orders:</h3>
                 <ul className="space-y-2">
-                  {orders.map((order, index) => (
-                    <li key={index} className="p-3 bg-gray-800 rounded flex justify-between">
-                      <span>{order.quantity}x {order.item}</span>
-                    </li>
-                  ))}
+                  {orders.map((order, index) => {
+                    const isProfit = order.profitOrLoss > 0;
+                    return (
+                      <li key={index} className="p-3 bg-gray-800 rounded flex justify-between items-center">
+                        <span>{order.quantity}x {order.item}</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-300">Price: ₹{order.totalPrice.toFixed(2)}</span>
+                          <span className={isProfit ? "text-green-500" : "text-red-500"}>
+                            {isProfit ? "Profit" : "Loss"}: ₹{Math.abs(order.profitOrLoss).toFixed(2)}
+                          </span>
+                          <button
+                            onClick={() => handleRemoveOrder(index)}
+                            className="text-red-500 hover:text-red-700 text-xl"
+                            title="Remove Order"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -233,6 +348,9 @@ const Dashboard = () => {
         return (
           <div className="p-6">
             <h2 className="text-3xl font-bold text-[#fbbf24] mb-4">Visualize</h2>
+            {errorMessage && (
+              <p className="text-red-500 mb-4">{errorMessage}</p>
+            )}
             <button
               onClick={handleVisualize}
               className="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
