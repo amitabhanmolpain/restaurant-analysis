@@ -1,30 +1,61 @@
-import logo from './logo.svg'
-import logo_dark from './logo_dark.svg'
-import cross_icon from './cross_icon.svg'
-import menu_icon from './menu_icon.svg'
-import star_icon from './star_icon.svg'
-import left_arrow from './left_arrow.svg'
-import right_arrow from './right_arrow.svg'
-import brand_img from './brand_img.png'
-import Headerr from './Headerr.png'
-import H4 from './H4.png'
+// src/assets/assets.js
+
+import Headerr from './Headerr.png';
+import H4 from './H4.png';
+import A1 from './A1.png';
+import A3 from './A3.png';
+import im1 from './im1.png';
+import im2 from './im2.png';
+import im3 from './im3.png';
+import im4 from './im4.png';
+import im5 from './im5.png';
+import im9 from './im9.png';
+import im10 from './im10.png';
+import img5 from './img5.png';
+import img6 from './img6.png';
+import img7 from './img7.png';
+import img8 from './img8.png';
+import bi from './bi.png';
+import cb from './cb.png';
+import cro from './cro.png';
+import ra from './ra.png';
+import smo from './smo.png';
+import su from './su.png';
+import doa from './doa.png';
+import growth from './growth.png';
+import foodwaste from './foodwaste.png';
+import peo from './peo.png';
+
+
+
 
 export const assets = {
-    logo,
-    logo_dark,
-    cross_icon,
-    menu_icon,
-    star_icon,
-    brand_img,
-    project_img_1,
-    project_img_2,
-    project_img_3,
-    project_img_4,
-    left_arrow,
-    right_arrow,
-    Headerr,
-    H4,
-}
-
-
+ 
+  Headerr,
+  H4,
+  A1,
+  A3,
+  im1,
+  im2,
+  im3,
+  im4,
+  im5,
+  im9,
+  im10,
+  img5,
+  img6,
+  img7,
+  img8,
+  bi,
+  cb,
+  cro,
+  ra,
+  smo,
+  su,
+  doa,
+  peo,
+  growth,
+  foodwaste,
   
+  
+};
