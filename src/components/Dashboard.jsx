@@ -7,6 +7,7 @@ const Dashboard = () => {
   const [activeSection, setActiveSection] = useState(null);
   const [items, setItems] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [feedbacks, setFeedbacks] = useState([]); // New state for feedbacks
   const [itemName, setItemName] = useState('');
   const [category, setCategory] = useState('');
   const [cuisine, setCuisine] = useState('');
@@ -34,9 +35,35 @@ const Dashboard = () => {
       });
   };
 
+  // Fetch feedbacks from backend
+  const fetchFeedbacks = () => {
+    axios.get("http://127.0.0.1:5001/api/feedback")
+      .then((res) => {
+        // Map the backend data to match the expected format
+        const formattedFeedbacks = res.data.map((fb) => ({
+          id: fb.id,
+          username: fb.name, // Map 'name' to 'username'
+          text: fb.feedback, // Map 'feedback' to 'text'
+          photo: `https://picsum.photos/50?random=${fb.id}`, // Generate a unique placeholder photo
+        }));
+        setFeedbacks(formattedFeedbacks);
+      })
+      .catch((err) => {
+        console.error("Error fetching feedbacks:", err);
+        setErrorMessage(err.response?.data?.error || 'Failed to fetch feedbacks. Please try again.');
+      });
+  };
+
   useEffect(() => {
     fetchItems();
   }, []);
+
+  // Fetch feedbacks when the "Customer Feedbacks" section is active
+  useEffect(() => {
+    if (activeSection === 'feedback') {
+      fetchFeedbacks();
+    }
+  }, [activeSection]);
 
   // Add a new item
   const handleAddItem = (e) => {
@@ -151,19 +178,6 @@ const Dashboard = () => {
         setErrorMessage(err.response?.data?.error || 'Failed to fetch visualizations. Please try again.');
       });
   };
-
-  const customerFeedbacks = [
-    { id: 1, username: "@foodie123", text: "Loved the Dosa! So crispy and delicious! 🌟", photo: "https://picsum.photos/50?random=1" },
-    { id: 2, username: "@tastybites", text: "Best Biryani in town! Will definitely come back. 🍗", photo: "https://picsum.photos/50?random=2" },
-    { id: 3, username: "@spicylover", text: "The Paneer Tikka was amazing! Spices were on point. 🔥", photo: "https://picsum.photos/50?random=3" },
-    { id: 4, username: "@hungrytraveler", text: "Great ambiance and food! Highly recommend the Naan. 🥙", photo: "https://picsum.photos/50?random=4" },
-    { id: 5, username: "@foodexplorer", text: "Samosas were fantastic! Perfect snack. 😋", photo: "https://picsum.photos/50?random=5" },
-    { id: 6, username: "@curryking", text: "Butter Chicken was heavenly! Great service too. 🥘", photo: "https://picsum.photos/50?random=6" },
-    { id: 7, username: "@flavorfan", text: "Tried the Thali, loved the variety! 🌍", photo: "https://picsum.photos/50?random=7" },
-    { id: 8, username: "@yummytummy", text: "Chole Bhature was a delight! So filling. 🍽️", photo: "https://picsum.photos/50?random=8" },
-    { id: 9, username: "@spicequeen", text: "Amazing Vada Pav! Tastes like home. 🏡", photo: "https://picsum.photos/50?random=9" },
-    { id: 10, username: "@eatwithlove", text: "The Lassi was refreshing! Perfect end to the meal. 🥤", photo: "https://picsum.photos/50?random=10" },
-  ];
 
   const handleSidebarClick = (section) => {
     setActiveSection(section);
@@ -382,17 +396,26 @@ const Dashboard = () => {
         return (
           <div className="p-6">
             <h2 className="text-3xl font-bold text-[#fbbf24] mb-4">Customer Feedbacks</h2>
-            <div className="space-y-4">
-              {customerFeedbacks.map((feedback) => (
-                <div key={feedback.id} className="p-4 bg-gray-800 rounded-lg flex items-start space-x-4">
-                  <img src={feedback.photo} alt={`${feedback.username} avatar`} className="w-12 h-12 rounded-full" />
-                  <div className="flex-1">
-                    <p className="text-[#1DA1F2] font-semibold">{feedback.username}</p>
-                    <p className="text-gray-300">{feedback.text}</p>
+            {errorMessage && (
+              <p className="text-red-500 mb-4">{errorMessage}</p>
+            )}
+            {feedbacks.length > 0 ? (
+              <div className="space-y-4">
+                {feedbacks.map((feedback) => (
+                  <div key={feedback.id} className="p-4 bg-gray-800 rounded-lg flex items-start space-x-4">
+                    <img src={feedback.photo} alt={`${feedback.username} avatar`} className="w-12 h-12 rounded-full" />
+                    <div className="flex-1">
+                      <p className="text-[#1DA1F2] font-semibold">{feedback.username}</p>
+                      <p className="text-gray-300">{feedback.text}</p>
+                      {/* Optionally display email if needed */}
+                      <p className="text-gray-500 text-sm">{feedback.email}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-300">No feedback available yet.</p>
+            )}
           </div>
         );
 
