@@ -75,12 +75,29 @@ def generate_graphs(order_collection, menu_collection):
                 selling_price = menu_lookup[item]["selling_price"]
                 actual_price = menu_lookup[item]["actual_price"]
                 profit_loss = selling_price - actual_price  # Profit per unit
+
+                # Assign category based on order time
+                # Breakfast: 6:00 AM - 10:59 AM
+                # Lunch: 11:00 AM - 3:59 PM
+                # Dinner: 4:00 PM - 9:59 PM
+                # Other: All other times (e.g., late-night orders)
+                hour = order_datetime.hour
+                if 6 <= hour < 11:
+                    category = "Breakfast"
+                elif 11 <= hour < 16:
+                    category = "Lunch"
+                elif 16 <= hour < 22:
+                    category = "Dinner"
+                else:
+                    category = "Other"
+
                 order_data.append({
                     "item": item,
                     "datetime": order_datetime,
                     "cuisine": cuisine,
                     "profit_loss": profit_loss,
-                    "selling_price": selling_price
+                    "selling_price": selling_price,
+                    "category": category
                 })
 
         # Create DataFrame
@@ -89,7 +106,7 @@ def generate_graphs(order_collection, menu_collection):
             return []
 
         df = pd.DataFrame(order_data)
-        logger.info(f"Created DataFrame with {len(df)} rows: {df.head().to_dict()}")
+        logger.info(f"Created DataFrame with {len(df)} rows")
 
         if df.empty:
             logger.info("DataFrame is empty, no visualizations to generate")
@@ -97,25 +114,26 @@ def generate_graphs(order_collection, menu_collection):
 
         # Convert 'datetime' to timezone-naive datetime64
         try:
-            df['datetime'] = pd.to_datetime(df['datetime'], utc=True).dt.tz_localize(None)
+            df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce', utc=True).dt.tz_localize(None)
+            invalid_datetimes = df['datetime'].isna().sum()
+            if invalid_datetimes > 0:
+                logger.warning(f"Found {invalid_datetimes} invalid datetime values, dropping them")
+                df = df.dropna(subset=['datetime'])
+                logger.info(f"DataFrame after dropping invalid datetimes: {len(df)} rows")
             logger.info("Converted 'datetime' column to timezone-naive datetime64")
         except Exception as e:
             logger.error(f"Failed to convert datetime column: {e}", exc_info=True)
             return []
 
-        # Drop invalid datetimes
-        invalid_datetimes = df['datetime'].isna().sum()
-        if invalid_datetimes > 0:
-            logger.warning(f"Found {invalid_datetimes} invalid datetime values in DataFrame")
-            df = df.dropna(subset=['datetime'])
-            logger.info(f"DataFrame after dropping invalid datetimes: {len(df)} rows")
-
         if df.empty:
-            logger.info("DataFrame is empty after dropping invalid datetimes, no visualizations to generate")
+            logger.info("DataFrame is empty after datetime processing, no visualizations to generate")
             return []
 
         # List to store graph URLs
         graph_urls = []
+
+        # Set consistent seaborn style for all plots
+        sns.set_style("whitegrid")
 
         # 1. Cuisine Pie Chart
         try:
@@ -127,7 +145,7 @@ def generate_graphs(order_collection, menu_collection):
                 plt.pie(cuisine_counts, labels=cuisine_counts.index, autopct='%1.1f%%', startangle=140)
                 plt.title("Distribution of Orders by Cuisine")
                 cuisine_graph_path = os.path.join(graph_dir, "cuisine_pie.png")
-                plt.savefig(cuisine_graph_path)
+                plt.savefig(cuisine_graph_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {cuisine_graph_path}")
                 graph_urls.append("cuisine_pie.png")
@@ -147,7 +165,7 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xlabel("Number of Orders")
                 plt.ylabel("Month")
                 monthly_sales_graph_path = os.path.join(graph_dir, "monthly_sales.png")
-                plt.savefig(monthly_sales_graph_path)
+                plt.savefig(monthly_sales_graph_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {monthly_sales_graph_path}")
                 graph_urls.append("monthly_sales.png")
@@ -166,7 +184,7 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xlabel("Number of Orders")
                 plt.ylabel("Item")
                 top_items_graph_path = os.path.join(graph_dir, "top_items.png")
-                plt.savefig(top_items_graph_path)
+                plt.savefig(top_items_graph_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {top_items_graph_path}")
                 graph_urls.append("top_items.png")
@@ -187,7 +205,7 @@ def generate_graphs(order_collection, menu_collection):
                 plt.ylabel("Number of Orders")
                 plt.xticks(rotation=45)
                 peak_hours_graph_path = os.path.join(graph_dir, "peak_hours.png")
-                plt.savefig(peak_hours_graph_path)
+                plt.savefig(peak_hours_graph_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {peak_hours_graph_path}")
                 graph_urls.append("peak_hours.png")
@@ -206,7 +224,7 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xlabel("Profit/Loss (₹)")
                 plt.ylabel("Item")
                 profit_loss_item_path = os.path.join(graph_dir, "profit_loss_by_item.png")
-                plt.savefig(profit_loss_item_path)
+                plt.savefig(profit_loss_item_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {profit_loss_item_path}")
                 graph_urls.append("profit_loss_by_item.png")
@@ -225,19 +243,19 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xlabel("Total Profit (₹)")
                 plt.ylabel("Item")
                 most_profitable_path = os.path.join(graph_dir, "most_profitable_items.png")
-                plt.savefig(most_profitable_path)
+                plt.savefig(most_profitable_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {most_profitable_path}")
                 graph_urls.append("most_profitable_items.png")
         except Exception as e:
             logger.error(f"Error generating Most Profitable Items Graph: {e}", exc_info=True)
 
-        # 7. Loss by Item (New Graph)
+        # 7. Top Items with Losses
         try:
             loss_by_item = df.groupby('item')['profit_loss'].sum()
-            loss_by_item = loss_by_item[loss_by_item < 0].nsmallest(5, key=abs)  # Top 5 items with losses (smallest = most negative)
+            loss_by_item = loss_by_item[loss_by_item < 0].nsmallest(5, key=abs)  # Top 5 items with losses (most negative)
             if loss_by_item.empty:
-                logger.warning("No loss data to plot, skipping Loss by Item Graph")
+                logger.warning("No loss data to plot, skipping Top Items with Losses Graph")
             else:
                 plt.figure(figsize=(10, 6))
                 sns.barplot(x=loss_by_item.values, y=loss_by_item.index, hue=loss_by_item.index, palette='Reds', legend=False)
@@ -245,12 +263,12 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xlabel("Total Loss (₹)")
                 plt.ylabel("Item")
                 loss_item_path = os.path.join(graph_dir, "loss_by_item.png")
-                plt.savefig(loss_item_path)
+                plt.savefig(loss_item_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {loss_item_path}")
                 graph_urls.append("loss_by_item.png")
         except Exception as e:
-            logger.error(f"Error generating Loss by Item Graph: {e}", exc_info=True)
+            logger.error(f"Error generating Top Items with Losses Graph: {e}", exc_info=True)
 
         # 8. Profit and Loss Over Time
         try:
@@ -268,12 +286,51 @@ def generate_graphs(order_collection, menu_collection):
                 plt.xticks(rotation=45)
                 plt.grid(True)
                 profit_loss_time_path = os.path.join(graph_dir, "profit_loss_over_time.png")
-                plt.savefig(profit_loss_time_path)
+                plt.savefig(profit_loss_time_path, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved graph: {profit_loss_time_path}")
                 graph_urls.append("profit_loss_over_time.png")
         except Exception as e:
             logger.error(f"Error generating Profit and Loss Over Time Graph: {e}", exc_info=True)
+
+        # 9. Category Pie Chart
+        try:
+            category_counts = df['category'].value_counts()
+            if category_counts.empty:
+                logger.warning("No category data to plot, skipping Category Pie Chart")
+            else:
+                plt.figure(figsize=(8, 8))
+                plt.pie(category_counts, labels=category_counts.index, autopct='%1.1f%%', startangle=140)
+                plt.title("Distribution of Orders by Category (Breakfast, Lunch, Dinner)")
+                category_graph_path = os.path.join(graph_dir, "category_pie.png")
+                plt.savefig(category_graph_path, bbox_inches='tight')
+                plt.close()
+                logger.info(f"Saved graph: {category_graph_path}")
+                graph_urls.append("category_pie.png")
+        except Exception as e:
+            logger.error(f"Error generating Category Pie Chart: {e}", exc_info=True)
+
+        # 10. Orders by Category Over Time
+        try:
+            category_by_month = df.groupby(['month', 'category']).size().unstack(fill_value=0)
+            if category_by_month.empty:
+                logger.warning("No category data to plot, skipping Orders by Category Over Time Graph")
+            else:
+                plt.figure(figsize=(12, 6))
+                category_by_month.plot(kind='line', marker='o')
+                plt.title("Orders by Category Over Time")
+                plt.xlabel("Month")
+                plt.ylabel("Number of Orders")
+                plt.xticks(rotation=45)
+                plt.legend(title="Category")
+                plt.grid(True)
+                category_time_path = os.path.join(graph_dir, "category_over_time.png")
+                plt.savefig(category_time_path, bbox_inches='tight')
+                plt.close()
+                logger.info(f"Saved graph: {category_time_path}")
+                graph_urls.append("category_over_time.png")
+        except Exception as e:
+            logger.error(f"Error generating Orders by Category Over Time Graph: {e}", exc_info=True)
 
         if not graph_urls:
             logger.warning("No graphs were generated due to lack of data")
