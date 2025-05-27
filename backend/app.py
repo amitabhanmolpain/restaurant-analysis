@@ -60,6 +60,7 @@ except ConnectionFailure as e:
 db = client["restaurant"]
 menu_collection = db["restaurant_menu"]
 order_collection = db["food_order"]
+feedback_collection = db["feedback"]  # New collection for feedback
 
 # Ensure graph directory exists
 GRAPH_DIR = os.path.join(os.getcwd(), "graphs")
@@ -108,6 +109,28 @@ def validate_order(data):
     if not all(isinstance(item, str) for item in data["items"]):
         logger.warning("Validation failed for order: all items must be strings")
         return False, "All items must be strings"
+    return True, ""
+
+# Helper function to validate feedback data
+def validate_feedback(data):
+    required_fields = ["name", "email", "feedback"]
+    missing_fields = [field for field in required_fields if field not in data or data[field] is None]
+    if missing_fields:
+        logger.warning(f"Validation failed for feedback: missing fields {missing_fields}")
+        return False, f"Missing required fields: {missing_fields}"
+    
+    # Validate field types
+    if not all(isinstance(data[field], str) for field in required_fields):
+        logger.warning("Validation failed for feedback: name, email, and feedback must be strings")
+        return False, "Name, email, and feedback must be strings"
+    
+    # Validate email format
+    import re
+    email_pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+    if not re.match(email_pattern, data["email"]):
+        logger.warning("Validation failed for feedback: invalid email format")
+        return False, "Invalid email format"
+    
     return True, ""
 
 # Add Item
@@ -199,6 +222,60 @@ def place_order():
         return jsonify({"message": "Order placed successfully"}), 200
     except Exception as e:
         logger.error(f"Error placing order: {e}", exc_info=True)
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+# Add Feedback
+@app.route("/api/feedback", methods=["POST"])
+def add_feedback():
+    try:
+        data = request.get_json()
+        if not data:
+            logger.warning("No data provided in add_feedback request")
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Validate the feedback data
+        is_valid, error_message = validate_feedback(data)
+        if not is_valid:
+            logger.warning(f"Invalid feedback data: {error_message}")
+            return jsonify({"error": error_message}), 400
+        
+        # Create feedback entry
+        feedback = {
+            "name": data["name"].strip(),
+            "email": data["email"].strip(),
+            "feedback": data["feedback"].strip(),
+            "created_at": datetime.utcnow().isoformat()  # Store timestamp
+        }
+        
+        result = feedback_collection.insert_one(feedback)
+        feedback["id"] = str(result.inserted_id)  # Add the MongoDB ObjectID as 'id'
+        logger.info(f"Added feedback from {feedback['name']} (email: {feedback['email']})")
+        return jsonify({"message": "Feedback added successfully"}), 201
+    except Exception as e:
+        logger.error(f"Error adding feedback: {e}", exc_info=True)
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+# Get Feedback
+@app.route("/api/feedback", methods=["GET"])
+def get_feedback():
+    try:
+        logger.info("Received request for /api/feedback")
+        feedback_list = list(feedback_collection.find({}, {"_id": 1, "name": 1, "email": 1, "feedback": 1, "created_at": 1}))
+        # Convert ObjectID to string and exclude '_id' from the response
+        formatted_feedback = [
+            {
+                "id": str(fb["_id"]),
+                "name": fb["name"],
+                "email": fb["email"],
+                "feedback": fb["feedback"],
+                "created_at": fb["created_at"]
+            }
+            for fb in feedback_list
+        ]
+        logger.info(f"Fetched {len(formatted_feedback)} feedback entries")
+        return jsonify(formatted_feedback), 200
+    except Exception as e:
+        logger.error(f"Error fetching feedback: {e}", exc_info=True)
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Visualization route
