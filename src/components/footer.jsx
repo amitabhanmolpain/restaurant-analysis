@@ -1,149 +1,196 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-const Footer = () => {
+const Feedback = () => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!name) {
+      setMessage('Please enter your name.');
+      setShowSuccessAnimation(false);
+      return;
+    }
+    if (!email) {
+      setMessage('Please enter your email.');
+      setShowSuccessAnimation(false);
+      return;
+    }
+    if (!feedback) {
+      setMessage('Please enter your feedback.');
+      setShowSuccessAnimation(false);
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setMessage('Please enter a valid email address.');
+      setShowSuccessAnimation(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('http://127.0.0.1:5001/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          feedback,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
+
+      setMessage('');
+      setShowSuccessAnimation(true);
+      setIsSubmitted(true);
+      setName('');
+      setEmail('');
+      setFeedback('');
+
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        setIsSubmitted(false);
+      }, 3000);
+    } catch (error) {
+      setMessage('Error submitting feedback. Please check your connection and try again.');
+      setShowSuccessAnimation(false);
+      console.error('Feedback submission error:', error);
+    }
+  };
+
   return (
-    <footer className="bg-[#0f172a] text-white py-12 px-6 w-full">
+    <>
       <style>
         {`
-          @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400&family=Roboto:wght@400;700&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+          @keyframes glow {
+            0% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.7); }
+            100% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+          }
+          .animate-glow {
+            animation: glow 1.5s ease-in-out infinite;
+          }
         `}
       </style>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Thali Verse Branding */}
-        <div className="flex flex-col items-center md:items-start">
+      <div className="bg-[#0f172a] min-h-screen flex flex-col items-center justify-center py-12 px-6">
+        <div className="text-center max-w-lg w-full">
           <h2
-            className="text-4xl italic text-[#ebbf24] mb-2"
-            style={{ fontFamily: "'Dancing Script', cursive" }}
+            className="text-4xl md:text-5xl font-bold text-[#ebbf24] mb-4"
+            style={{ fontFamily: "'Roboto', sans-serif'" }}
           >
-            Thali Verse
+            We Value Your Feedback
           </h2>
           <p
-            className="text-sm text-center md:text-left text-gray-300"
+            className="text-lg text-white mb-6"
             style={{ fontFamily: "'Roboto', sans-serif'" }}
           >
-            Savor the Essence of Indian Cuisine
+            Help us improve your ThaliVerse experience!
           </p>
-        </div>
 
-        {/* Contact Information */}
-        <div className="flex flex-col items-center md:items-start">
-          <h3
-            className="text-xl font-semibold text-[#ebbf24] mb-4"
-            style={{ fontFamily: "'Roboto', sans-serif'" }}
-          >
-            Contact Us
-          </h3>
-          <p
-            className="text-sm text-gray-300 mb-2"
-            style={{ fontFamily: "'Roboto', sans-serif'" }}
-          >
-            Email: support@thaliverse.com
-          </p>
-          <p
-            className="text-sm text-gray-300 mb-2"
-            style={{ fontFamily: "'Roboto', sans-serif'" }}
-          >
-            Phone: +91 98765 43210
-          </p>
-          <p
-            className="text-sm text-gray-300"
-            style={{ fontFamily: "'Roboto', sans-serif'" }}
-          >
-            Address: 123 Flavor Street, Mumbai, India
-          </p>
-        </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-base font-medium text-[#ebbf24] mb-2"
+                style={{ fontFamily: "'Roboto', sans-serif'" }}
+              >
+                Your Name
+              </label>
+              <input
+                type="text"
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-4 rounded-lg bg-[#1a2639] text-white border border-transparent focus:outline-none focus:ring-2 focus:ring-[#ebbf24] placeholder-gray-400"
+                placeholder="Enter your name"
+                disabled={isSubmitted}
+              />
+            </div>
 
-        {/* Social Media Links */}
-        <div className="flex flex-col items-center md:items-start">
-          <h3
-            className="text-xl font-semibold text-[#ebbf24] mb-4"
-            style={{ fontFamily: "'Roboto', sans-serif'" }}
-          >
-            Follow Us
-          </h3>
-          <div className="flex space-x-4">
-            {/* Twitter */}
-            <a
-              href="https://twitter.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Twitter"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 text-[#ebbf24] hover:text-[#f4d03f] transition"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-base font-medium text-[#ebbf24] mb-2"
+                style={{ fontFamily: "'Roboto', sans-serif'" }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2c9 5 20 0 20-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"
-                />
-              </svg>
-            </a>
-            {/* Instagram */}
-            <a
-              href="https://instagram.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 text-[#ebbf24] hover:text-[#f4d03f] transition"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
+                Email Address
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-4 rounded-lg bg-[#1a2639] text-white border border-transparent focus:outline-none focus:ring-2 focus:ring-[#ebbf24] placeholder-gray-400"
+                placeholder="Enter your email"
+                disabled={isSubmitted}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="feedback"
+                className="block text-base font-medium text-[#ebbf24] mb-2"
+                style={{ fontFamily: "'Roboto', sans-serif'" }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M7 3h10a4 4 0 014 4v10a4 4 0 01-4 4H7a4 4 0 01-4-4V7a4 4 0 014-4zm5 7a2 2 0 100 4 2 2 0 000-4zm5-3a1 1 0 110 2 1 1 0 010-2z"
-                />
-              </svg>
-            </a>
-            {/* Facebook */}
-            <a
-              href="https://facebook.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Facebook"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 text-[#ebbf24] hover:text-[#f4d03f] transition"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
+                Feedback
+              </label>
+              <textarea
+                id="feedback"
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                className="w-full p-4 rounded-lg bg-[#1a2639] text-white border border-transparent focus:outline-none focus:ring-2 focus:ring-[#ebbf24] resize-none placeholder-gray-400"
+                rows="4"
+                placeholder="Enter your feedback"
+                disabled={isSubmitted}
+              />
+            </div>
+
+            {message && !showSuccessAnimation && (
+              <p
+                className="text-center text-red-400"
+                style={{ fontFamily: "'Roboto', sans-serif'" }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"
-                />
-              </svg>
-            </a>
-          </div>
+                {message}
+              </p>
+            )}
+
+            {showSuccessAnimation && (
+              <div className="flex flex-col items-center mt-4">
+                <p
+                  className="text-green-400 text-center animate-glow"
+                  style={{ fontFamily: "'Roboto', sans-serif'" }}
+                >
+                  Thank you for your feedback!
+                </p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-[#ebbf24] text-black font-semibold py-4 rounded-lg hover:bg-yellow-500 transition"
+              disabled={isSubmitted}
+              style={{ fontFamily: "'Roboto', sans-serif'" }}
+            >
+              Submit
+            </button>
+          </form>
         </div>
       </div>
-
-      {/* Copyright Notice */}
-      <div className="mt-8 text-center border-t border-gray-700 pt-4">
-        <p
-          className="text-sm text-gray-400"
-          style={{ fontFamily: "'Roboto', sans-serif'" }}
-        >
-          © 2025 Thali Verse. All rights reserved.
-        </p>
-      </div>
-    </footer>
+    </>
   );
 };
 
-export default Footer;
+export default Feedback;
