@@ -34,24 +34,24 @@ const Middle = () => {
   const visibleItems = foodItems.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <div className="py-9 min-h-[500px] flex flex-col items-center justify-center bg-[#F5F1EB] w-full">
+    <div className="py-6 sm:py-9 min-h-[400px] sm:min-h-[500px] flex flex-col items-center justify-center bg-[#F5F1EB] w-full">
       <h1
-        className="text-4xl md:text-5xl font-bold text-center text-black mb-6"
+        className="text-3xl sm:text-4xl md:text-5xl font-bold text-center text-black mb-4 sm:mb-6"
         style={{ fontFamily: "'Dancing Script', cursive" }}
       >
         Featured Dishes
       </h1>
 
-      <div className="relative w-full max-w-7xl flex items-center justify-center px-4 sm:px-6">
+      <div className="relative w-full max-w-6xl sm:max-w-7xl flex items-center justify-center px-2 sm:px-6">
         {/* Left Arrow */}
         <button
-          className="absolute left-2 sm:left-[-20px] top-1/2 transform -translate-y-1/2 z-10 focus:outline-none"
+          className="absolute left-1 sm:left-[-20px] top-1/2 transform -translate-y-1/2 z-10 focus:outline-none"
           onClick={prevSlide}
           aria-label="Previous slide"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400 hover:text-yellow-500 transition"
+            className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-yellow-400 hover:text-yellow-500 transition"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -66,11 +66,11 @@ const Middle = () => {
         </button>
 
         {/* Cards */}
-        <div className="flex gap-4 sm:gap-6 overflow-hidden w-full justify-center">
+        <div className="flex gap-2 sm:gap-4 md:gap-6 overflow-hidden w-full justify-center">
           {visibleItems.map((item) => (
             <div
               key={item.id}
-              className="flex-shrink-0 w-[240px] h-[240px] sm:w-[280px] sm:h-[280px] bg-[#1e2a44] rounded-lg overflow-hidden shadow-lg border-4 border-[#2c3e50]"
+              className="flex-shrink-0 w-[160px] h-[160px] sm:w-[200px] sm:h-[200px] md:w-[280px] md:h-[280px] bg-[#1e2a44] rounded-lg overflow-hidden shadow-lg border-2 sm:border-4 border-[#2c3e50]"
             >
               <img
                 src={item.image}
@@ -84,13 +84,13 @@ const Middle = () => {
 
         {/* Right Arrow */}
         <button
-          className="absolute right-2 sm:right-[-20px] top-1/2 transform -translate-y-1/2 z-10 focus:outline-none"
+          className="absolute right-1 sm:right-[-20px] top-1/2 transform -translate-y-1/2 z-10 focus:outline-none"
           onClick={nextSlide}
           aria-label="Next slide"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400 hover:text-yellow-500 transition"
+            className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-yellow-400 hover:text-yellow-500 transition"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -107,7 +107,7 @@ const Middle = () => {
 
       <a
         href="/menu"
-        className="block text-center mt-12 text-[#0f172a] text-base md:text-lg hover:text-yellow-500 transition"
+        className="block text-center mt-8 sm:mt-12 text-[#0f172a] text-sm sm:text-base md:text-lg hover:text-yellow-500 transition"
         style={{ fontFamily: "'Roboto', sans-serif'" }}
       >
         See More →
